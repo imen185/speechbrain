@@ -2,7 +2,7 @@
 Neural network modules for the VITS fully end-to-end neural Text-to-Speech (TTS) model
 
 Authors
-* Imen Laouirine 2023
+* 
 """
 
 # This code uses a significant portion of the official implementation  of VITS by Jaehyeon Kim, Jungil Kongand  Juhee Son.
