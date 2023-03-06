@@ -72,11 +72,27 @@ mel_scale: "slaney"
 dynamic_range_compression: True
 
 ################################
+# Train Hyperparameters #
+################################
+log_interval: 200
+eval_interval: 1000
+fp16_run: true
+lr_decay: 0.999875
+segment_size: 8192
+init_lr_ratio: 1
+warmup_epochs: 0
+c_mel: 45
+c_kl: 1.0
+
+
+################################
 # Optimization Hyperparameters #
 ################################
-learning_rate: 0.001
+learning_rate: 0.0002
 weight_decay: 0.000006
 batch_size: 64 #minimum 2
+betas: [0.8, 0.99]
+eps: 1e-9
 guided_attention_sigma: 0.2
 guided_attention_weight: 50.0
 guided_attention_weight_half_life: 10.

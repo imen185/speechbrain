@@ -19,6 +19,7 @@ from torch.nn import functional as F
 from torch.nn import Conv1d, ConvTranspose1d, AvgPool1d, Conv2d
 from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
 import monotonic_align
+from collections import namedtuple
 
 LRELU_SLOPE = 0.1
 DEFAULT_MIN_BIN_WIDTH = 1e-3
@@ -961,6 +962,8 @@ class Loss(nn.modules):
     """
     loss_disc, losses_disc_r, losses_disc_g = self.discriminator_loss(y_d_hat_r, y_d_hat_g)
     loss_disc_all = loss_disc
+    loss_kl = self.kl_loss(z_p, logs_q, m_p, logs_p, z_mask) * hps.train.c_kl
+
     total_loss = loss_disc + gate_loss + attn_loss
     return LossStats(
         total_loss, loss_disc, gate_loss, attn_loss, attn_weight
