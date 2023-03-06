@@ -970,7 +970,7 @@ class Loss(nn.modules):
         Returns
         -------
         result: LossStats
-            the total loss - and individual losses (mel and gate)
+            the total loss - and individual losses (reconstruction, KL, adv, fm and dur)
 
     """
     loss_disc, losses_disc_r, losses_disc_g = self.discriminator_loss(y_d_hat_r, y_d_hat_g)
