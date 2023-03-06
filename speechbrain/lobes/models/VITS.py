@@ -921,7 +921,7 @@ class SynthesizerTrn(nn.Module):
 
 
 LossStats = namedtuple(
-    "TacotronLoss", "loss mel_loss gate_loss attn_loss attn_weight"
+    "VitsLoss", "loss mel_loss gate_loss attn_loss attn_weight"
 )
 
 class Loss(nn.modules):
@@ -931,21 +931,7 @@ class Loss(nn.modules):
      
     ):
         super().__init__()
-        if guided_attention_weight == 0:
-            guided_attention_weight = None
-        self.guided_attention_weight = guided_attention_weight
-        _, self.generator_loss = self.generator_loss()
-        _, self.discriminator_loss= self.discriminator_loss()
-
-
-        # self.bce_loss = nn.BCEWithLogitsLoss()
-        # self.guided_attention_loss = GuidedAttentionLoss(
-        #     sigma=guided_attention_sigma
-        # )
-        # self.gate_loss_weight = gate_loss_weight
-        # self.guided_attention_weight = guided_attention_weight
-        # self.guided_attention_scheduler = guided_attention_scheduler
-        # self.guided_attention_hard_stop = guided_attention_hard_stop
+       
 
   def forward(
         self, model_output, targets, input_lengths, target_lengths, epoch
@@ -975,9 +961,9 @@ class Loss(nn.modules):
     """
     loss_disc, losses_disc_r, losses_disc_g = self.discriminator_loss(y_d_hat_r, y_d_hat_g)
     loss_disc_all = loss_disc
-    total_loss = mel_loss + gate_loss + attn_loss
+    total_loss = loss_disc + gate_loss + attn_loss
     return LossStats(
-        total_loss, mel_loss, gate_loss, attn_loss, attn_weight
+        total_loss, loss_disc, gate_loss, attn_loss, attn_weight
         )
   
   def feature_loss(fmap_r, fmap_g):
@@ -1035,6 +1021,99 @@ class Loss(nn.modules):
     kl = torch.sum(kl * z_mask)
     l = kl / torch.sum(z_mask)
     return l
+
+
+class TextMelCollate:
+    """ Zero-pads model inputs and targets based on number of frames per step
+
+    Arguments
+    ---------
+    n_frames_per_step: int
+        the number of output frames per step
+
+    Returns
+    -------
+    result: tuple
+        a tuple of tensors to be used as inputs/targets
+        (
+            text_padded,
+            input_lengths,
+            mel_padded,
+            gate_padded,
+            output_lengths,
+            len_x
+        )
+    """
+
+    def __init__(self, n_frames_per_step=1):
+        self.n_frames_per_step = n_frames_per_step
+
+    # TODO: Make this more intuitive, use the pipeline
+    def __call__(self, batch):
+        """Collate's training batch from normalized text and mel-spectrogram
+        Arguments
+        ---------
+        batch: list
+            [text_normalized, mel_normalized]
+        """
+
+        # TODO: Remove for loops and this dirty hack
+        raw_batch = list(batch)
+        for i in range(
+            len(batch)
+        ):  # the pipline return a dictionary wiht one elemnent
+            batch[i] = batch[i]["mel_text_pair"]
+
+        # Right zero-pad all one-hot text sequences to max input length
+        input_lengths, ids_sorted_decreasing = torch.sort(
+            torch.LongTensor([len(x[0]) for x in batch]), dim=0, descending=True
+        )
+        max_input_len = input_lengths[0]
+
+        text_padded = torch.LongTensor(len(batch), max_input_len)
+        text_padded.zero_()
+        for i in range(len(ids_sorted_decreasing)):
+            text = batch[ids_sorted_decreasing[i]][0]
+            text_padded[i, : text.size(0)] = text
+
+        # Right zero-pad mel-spec
+        num_mels = batch[0][1].size(0)
+        max_target_len = max([x[1].size(1) for x in batch])
+        if max_target_len % self.n_frames_per_step != 0:
+            max_target_len += (
+                self.n_frames_per_step - max_target_len % self.n_frames_per_step
+            )
+            assert max_target_len % self.n_frames_per_step == 0
+
+        # include mel padded and gate padded
+        mel_padded = torch.FloatTensor(len(batch), num_mels, max_target_len)
+        mel_padded.zero_()
+        gate_padded = torch.FloatTensor(len(batch), max_target_len)
+        gate_padded.zero_()
+        output_lengths = torch.LongTensor(len(batch))
+        labels, wavs = [], []
+        for i in range(len(ids_sorted_decreasing)):
+            idx = ids_sorted_decreasing[i]
+            mel = batch[idx][1]
+            mel_padded[i, :, : mel.size(1)] = mel
+            gate_padded[i, mel.size(1) - 1 :] = 1
+            output_lengths[i] = mel.size(1)
+            labels.append(raw_batch[idx]["label"])
+            wavs.append(raw_batch[idx]["wav"])
+
+        # count number of items - characters in text
+        len_x = [x[2] for x in batch]
+        len_x = torch.Tensor(len_x)
+        return (
+            text_padded,
+            input_lengths,
+            mel_padded,
+            gate_padded,
+            output_lengths,
+            len_x,
+            labels,
+            wavs,
+        )
 
 
 ############################ TRansforms #############################
