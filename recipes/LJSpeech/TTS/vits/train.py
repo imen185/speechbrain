@@ -4,8 +4,12 @@ import speechbrain as sb
 import sys
 import logging
 from hyperpyyaml import load_hyperpyyaml
+####To be fixed after modifying the text_to_sequence.py script 
 from speechbrain.utils.text_to_sequence import text_to_sequence
+from speechbrain.utils.text_to_sequence import symbols
 from speechbrain.utils.data_utils import scalarize
+from torch.nn.parallel import DistributedDataParallel as DDP
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +48,25 @@ class VITSBrain(sb.Brain):
         _, input_lengths, _, _, _ = inputs
 
         max_input_length = input_lengths.max().item()
-        return self.modules.model(inputs, alignments_dim=max_input_length)
+        
+        # generate sythesized waveforms
+        # net_g = self.modules.generator(len(symbols), self.hparams.filter_length //2 +1 , self.hparams.segment_size // self.hparams.hop_length, \
+        #                                self.params.inter_channels, self.params.hidden_channels, self.params.filter_channels, self.params.n_heads ,\
+        #                                self.params.n_layers, self.params.kernel_size, self.params.p_dropout, self.params.resblock , self.params.resblock_kernel_sizes ,\
+        #                                self.params.resblock_dilation_sizes, self.params.upsample_rates,  self.params.upsample_initial_channel,  self.params.upsample_kernel_sizes , \
+        #                                self.params.n_layers_q, self.params.use_spectral_norm)
+        
+        net_g = self.modules.generator(inputs)
+        
+        y_hat, l_length, attn, ids_slice, x_mask, z_mask,\
+        (z, z_p, m_p, logs_p, m_q, logs_q) = net_g(x, x_lengths, spec, spec_lengths)
+        # get scores and features from discriminator for real and synthesized waveforms
+        scores_fake, feats_fake = self.modules.discriminator(y_g_hat.detach())
+        scores_real, feats_real = self.modules.discriminator(y)
+
+        return (y_g_hat, scores_fake, feats_fake, scores_real, feats_real)
     
+
     def fit_batch(self, batch):
         """Fits a single batch and applies annealing
 
@@ -104,13 +125,14 @@ class VITSBrain(sb.Brain):
         loss: torch.Tensor
             the loss value
         """
-        inputs, targets, num_items, labels, wavs = batch
-        text_padded, input_lengths, _, max_len, output_lengths = inputs
-        loss_stats = self.hparams.criterion(
-            predictions, targets, input_lengths, output_lengths, self.last_epoch
-        )
-        self.last_loss_stats[stage] = scalarize(loss_stats)
-        return loss_stats.loss
+        # inputs, targets, num_items, labels, wavs = batch
+        # text_padded, input_lengths, _, max_len, output_lengths = inputs
+        # loss_stats = self.hparams.criterion(
+        #     predictions, targets, input_lengths, output_lengths, self.last_epoch
+        # )
+        # self.last_loss_stats[stage] = scalarize(loss_stats)
+        # return loss_stats.loss
+        return 1
     
 
     def _remember_sample(self, batch, predictions):
@@ -168,7 +190,7 @@ class VITSBrain(sb.Brain):
 
         Returns
         -------
-        batch: tiuple
+        batch: tuple
             the batch on the correct device
         """
         (
@@ -292,8 +314,8 @@ class VITSBrain(sb.Brain):
 
 def dataio_prepare(hparams):
     # Define audio pipeline:
-    @sb.utils.data_pipeline.takes("wav", "label", "segment")
-    @sb.utils.data_pipeline.provides("mel_text_pair", "mel", "sig")
+    @sb.utils.data_pipeline.takes("wav", "label")
+    @sb.utils.data_pipeline.provides("mel_text_pair")
 
     def audio_pipeline(wav, label):
         text_seq = torch.IntTensor(

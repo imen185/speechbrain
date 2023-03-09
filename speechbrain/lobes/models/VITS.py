@@ -18,8 +18,11 @@ from torch.nn import functional as F
 
 from torch.nn import Conv1d, ConvTranspose1d, AvgPool1d, Conv2d
 from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
-import monotonic_align
 from collections import namedtuple
+
+# import sys
+# sys.path.append("../")
+import speechbrain.lobes.models.monotonic_align as monotonic_align
 
 LRELU_SLOPE = 0.1
 DEFAULT_MIN_BIN_WIDTH = 1e-3
@@ -921,109 +924,113 @@ class SynthesizerTrn(nn.Module):
     return o_hat, y_mask, (z, z_p, z_hat)
 
 
-LossStats = namedtuple(
-    "VitsLoss", "loss mel_loss gate_loss attn_loss attn_weight"
-)
+# LossStats = namedtuple(
+#     "VitsLoss", "loss loss_disc loss_kl attn_loss attn_weight"
+# )
 
-class Loss(nn.modules):
+# class Loss(nn.modules):
 
-  def __init__(
-        self,
+#   def __init__(
+#         self,
+#         c_kl: 1.0
      
-    ):
-        super().__init__()
+#     ):
+#        super().__init__()
+#        self.c_kl= c_kl
        
 
-  def forward(
-        self, model_output, targets, input_lengths, target_lengths, epoch
-    ):
-    """Computes the loss
+#   def forward(
+#         self, model_output, targets, input_lengths, target_lengths, epoch
+#     ):
+#     """Computes the loss
 
-        Arguments
-        ---------
-        model_output: tuple
-            the output of the model's forward():
-            (mel_outputs, mel_outputs_postnet, gate_outputs, alignments)
-        targets: tuple
-            the targets
-        input_lengths: torch.Tensor
-            a (batch, length) tensor of input lengths
-        target_lengths: torch.Tensor
-            a (batch, length) tensor of target (spectrogram) lengths
-        epoch: int
-            the current epoch number (used for the scheduling of the guided attention
-            loss) A StepScheduler is typically used
+#         Arguments
+#         ---------
+#         model_output: tuple
+#             the output of the model's forward():
+#             (mel_outputs, mel_outputs_postnet, gate_outputs, alignments)
+#         targets: tuple
+#             the targets
+#         input_lengths: torch.Tensor
+#             a (batch, length) tensor of input lengths
+#         target_lengths: torch.Tensor
+#             a (batch, length) tensor of target (spectrogram) lengths
+#         epoch: int
+#             the current epoch number (used for the scheduling of the guided attention
+#             loss) A StepScheduler is typically used
 
-        Returns
-        -------
-        result: LossStats
-            the total loss - and individual losses (reconstruction, KL, adv, fm and dur)
+#         Returns
+#         -------
+#         result: LossStats
+#             the total loss - and individual losses (reconstruction, KL, adv, fm and dur)
 
-    """
-    loss_disc, losses_disc_r, losses_disc_g = self.discriminator_loss(y_d_hat_r, y_d_hat_g)
-    loss_disc_all = loss_disc
-    loss_kl = self.kl_loss(z_p, logs_q, m_p, logs_p, z_mask) * hps.train.c_kl
+#     """
+#     loss_disc, losses_disc_r, losses_disc_g = self.discriminator_loss(y_d_hat_r, y_d_hat_g)
+#     loss_disc_all = loss_disc
+#     loss_kl = self.kl_loss(z_p, logs_q, m_p, logs_p, z_mask) * self.c_kl
 
-    total_loss = loss_disc + gate_loss + attn_loss
-    return LossStats(
-        total_loss, loss_disc, gate_loss, attn_loss, attn_weight
-        )
+
+#     total_loss = loss_disc + loss_kl + attn_loss
+    
+#     return LossStats(
+#         total_loss, loss_disc, loss_kl, attn_loss, attn_weight
+#         )
   
-  def feature_loss(fmap_r, fmap_g):
-    loss = 0
-    for dr, dg in zip(fmap_r, fmap_g):
-      for rl, gl in zip(dr, dg):
-        rl = rl.float().detach()
-        gl = gl.float()
-        loss += torch.mean(torch.abs(rl - gl))
+#   def feature_loss(fmap_r, fmap_g):
+#     loss = 0
+#     for dr, dg in zip(fmap_r, fmap_g):
+#       for rl, gl in zip(dr, dg):
+#         rl = rl.float().detach()
+#         gl = gl.float()
+#         loss += torch.mean(torch.abs(rl - gl))
 
-    return loss * 2 
-
-
-  def discriminator_loss(disc_real_outputs, disc_generated_outputs):
-    loss = 0
-    r_losses = []
-    g_losses = []
-    for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
-      dr = dr.float()
-      dg = dg.float()
-      r_loss = torch.mean((1-dr)**2)
-      g_loss = torch.mean(dg**2)
-      loss += (r_loss + g_loss)
-      r_losses.append(r_loss.item())
-      g_losses.append(g_loss.item())
-
-    return loss, r_losses, g_losses
+#     return loss * 2 
 
 
-  def generator_loss(disc_outputs):
-    loss = 0
-    gen_losses = []
-    for dg in disc_outputs:
-      dg = dg.float()
-      l = torch.mean((1-dg)**2)
-      gen_losses.append(l)
-      loss += l
+#   def discriminator_loss(disc_real_outputs, disc_generated_outputs):
+#     loss = 0
+#     r_losses = []
+#     g_losses = []
+#     for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
+#       dr = dr.float()
+#       dg = dg.float()
+#       r_loss = torch.mean((1-dr)**2)
+#       g_loss = torch.mean(dg**2)
+#       loss += (r_loss + g_loss)
+#       r_losses.append(r_loss.item())
+#       g_losses.append(g_loss.item())
 
-    return loss, gen_losses
+#     return loss, r_losses, g_losses
 
 
-  def kl_loss(z_p, logs_q, m_p, logs_p, z_mask):
-    """
-    z_p, logs_q: [b, h, t_t]
-    m_p, logs_p: [b, h, t_t]
-    """
-    z_p = z_p.float()
-    logs_q = logs_q.float()
-    m_p = m_p.float()
-    logs_p = logs_p.float()
-    z_mask = z_mask.float()
+#   def generator_loss(disc_outputs):
+#     loss = 0
+#     gen_losses = []
+#     for dg in disc_outputs:
+#       dg = dg.float()
+#       l = torch.mean((1-dg)**2)
+#       gen_losses.append(l)
+#       loss += l
 
-    kl = logs_p - logs_q - 0.5
-    kl += 0.5 * ((z_p - m_p)**2) * torch.exp(-2. * logs_p)
-    kl = torch.sum(kl * z_mask)
-    l = kl / torch.sum(z_mask)
-    return l
+#     return loss, gen_losses
+
+
+#   def kl_loss(z_p, logs_q, m_p, logs_p, z_mask):
+#     """
+#     z_p, logs_q: [b, h, t_t]
+#     m_p, logs_p: [b, h, t_t]
+#     """
+#     z_p = z_p.float()
+#     logs_q = logs_q.float()
+#     m_p = m_p.float()
+#     logs_p = logs_p.float()
+#     z_mask = z_mask.float()
+
+#     kl = logs_p - logs_q - 0.5
+#     kl += 0.5 * ((z_p - m_p)**2) * torch.exp(-2. * logs_p)
+#     kl = torch.sum(kl * z_mask)
+#     l = kl / torch.sum(z_mask)
+#     return l
 
 
 class TextMelCollate:

@@ -82,7 +82,7 @@ segment_size: 8192
 init_lr_ratio: 1
 warmup_epochs: 0
 c_mel: 45
-c_kl: 1.0
+
 
 
 ################################
@@ -118,6 +118,9 @@ test_dataloader_opts:
 ################################
 # Model Parameters and model   #
 ################################
+n_vocab: 98 #####to be fixed
+spec_channels: 384 ####to be fixed 
+# segment_size: 20 ##### to be fixed
 inter_channels: 192
 hidden_channels: 192
 filter_channels: 768
@@ -133,6 +136,17 @@ upsample_initial_channel: 512,
 upsample_kernel_sizes: [16,16,4,4]
 n_layers_q: 3
 use_spectral_norm: false
+
+###########################
+########data #############
+#########################
+
+max_wav_value: 32768.0
+filter_length: 1024
+add_blank: true
+n_speakers: 0
+cleaned_text: true
+
 
 # Encoder parameters
 encoder_kernel_size: 5
@@ -163,7 +177,7 @@ postnet_embedding_dim: 512
 postnet_kernel_size: 5
 postnet_n_convolutions: 5
 
-mel_spectogram: !name:speechbrain.lobes.models.VITS.mel_spectogram
+mel_spectogram: !name:speechbrain.lobes.models.Tacotron2.mel_spectogram
   sample_rate: !ref <sample_rate>
   hop_length: !ref <hop_length>
   win_length: !ref <win_length>
@@ -178,7 +192,10 @@ mel_spectogram: !name:speechbrain.lobes.models.VITS.mel_spectogram
   compression: !ref <dynamic_range_compression>
 
 #model
-model: !new:speechbrain.lobes.models.VITS.SynthesizerTrn
+generator: !new:speechbrain.lobes.models.VITS.SynthesizerTrn
+  n_vocab: !ref <n_vocab>
+  spec_channels: !ref <spec_channels>
+  segment_size: !ref <segment_size>
   inter_channels: !ref <inter_channels>
   hidden_channels: !ref <hidden_channels>
   filter_channels: !ref <filter_channels>
@@ -195,20 +212,27 @@ model: !new:speechbrain.lobes.models.VITS.SynthesizerTrn
   n_layers_q: !ref <n_layers_q>
   use_spectral_norm: !ref <use_spectral_norm>
 
+discriminator: !new:speechbrain.lobes.models.VITS.MultiPeriodDiscriminator
+
 
 guided_attention_scheduler: !new:speechbrain.nnet.schedulers.StepScheduler
   initial_value: !ref <guided_attention_weight>
   half_life: !ref <guided_attention_weight_half_life>
 
-criterion: !new:speechbrain.lobes.models.VITS.Loss
-  gate_loss_weight: !ref <gate_loss_weight>
-  guided_attention_weight: !ref <guided_attention_weight>
-  guided_attention_sigma: !ref <guided_attention_sigma>
-  guided_attention_scheduler: !ref <guided_attention_scheduler>
-  guided_attention_hard_stop: !ref <guided_attention_hard_stop>
+## TO DO: fix Loss class in VITS.py
+# criterion: !new:speechbrain.lobes.models.VITS.Loss
+#   gate_loss_weight: !ref <gate_loss_weight>
+#   guided_attention_weight: !ref <guided_attention_weight>
+#   guided_attention_sigma: !ref <guided_attention_sigma>
+#   guided_attention_scheduler: !ref <guided_attention_scheduler>
+#   guided_attention_hard_stop: !ref <guided_attention_hard_stop>
+
+# modules:
+#   model: !ref <model>
 
 modules:
-  model: !ref <model>
+  generator: !ref <generator>
+  discriminator: !ref <discriminator>
 
 #optimizer
 opt_class: !name:torch.optim.Adam
@@ -236,7 +260,8 @@ lr_annealing: !new:speechbrain.nnet.schedulers.IntervalScheduler
 checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
   checkpoints_dir: !ref <save_folder>
   recoverables:
-    model: !ref <model>
+    generator: !ref <generator>
+    discriminator: !ref <discriminator>
     counter: !ref <epoch_counter>
     scheduler: !ref <lr_annealing>
 
