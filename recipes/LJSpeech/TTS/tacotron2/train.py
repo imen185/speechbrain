@@ -21,11 +21,12 @@ import torch
 import speechbrain as sb
 import sys
 import logging
+from loguru import logger
 from hyperpyyaml import load_hyperpyyaml
 from speechbrain.utils.text_to_sequence import text_to_sequence
 from speechbrain.utils.data_utils import scalarize
 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
 
 class Tacotron2Brain(sb.Brain):
@@ -56,7 +57,6 @@ class Tacotron2Brain(sb.Brain):
         """
         effective_batch = self.batch_to_device(batch)
         inputs, y, num_items, _, _ = effective_batch
-
         _, input_lengths, _, _, _ = inputs
 
         max_input_length = input_lengths.max().item()
@@ -212,7 +212,7 @@ class Tacotron2Brain(sb.Brain):
     def _get_spectrogram_sample(self, raw):
         """Converts a raw spectrogram to one that can be saved as an image
         sample  = sqrt(exp(raw))
-
+        
         Arguments
         ---------
         raw: torch.Tensor

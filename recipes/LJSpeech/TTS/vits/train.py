@@ -4,6 +4,7 @@ import speechbrain as sb
 import sys
 import logging
 from hyperpyyaml import load_hyperpyyaml
+from loguru import logger
 ####To be fixed after modifying the text_to_sequence.py script 
 from speechbrain.utils.text_to_sequence import text_to_sequence
 from speechbrain.utils.text_to_sequence import symbols
@@ -11,7 +12,7 @@ from speechbrain.utils.data_utils import scalarize
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
 # torch.backends.cudnn.benchmark = True
 # global_step = 0
@@ -43,23 +44,42 @@ class VITSBrain(sb.Brain):
         the model output
         """
         effective_batch = self.batch_to_device(batch)
-        inputs, y, num_items, _, _ = effective_batch
-
-        _, input_lengths, _, _, _ = inputs
+        inputs, mel_target, len_x, labels, wavs = effective_batch
+        input_x, input_lengths, _, _, output_lengths = inputs
 
         max_input_length = input_lengths.max().item()
         
         # generate sythesized waveforms
         # net_g = self.modules.generator(len(symbols), self.hparams.filter_length //2 +1 , self.hparams.segment_size // self.hparams.hop_length, \
-        #                                self.params.inter_channels, self.params.hidden_channels, self.params.filter_channels, self.params.n_heads ,\
-        #                                self.params.n_layers, self.params.kernel_size, self.params.p_dropout, self.params.resblock , self.params.resblock_kernel_sizes ,\
-        #                                self.params.resblock_dilation_sizes, self.params.upsample_rates,  self.params.upsample_initial_channel,  self.params.upsample_kernel_sizes , \
-        #                                self.params.n_layers_q, self.params.use_spectral_norm)
+        #                                self.hparams.inter_channels, self.hparams.hidden_channels, self.hparams.filter_channels, self.hparams.n_heads ,\
+        #                                self.hparams.n_layers, self.hparams.kernel_size, self.hparams.p_dropout, self.hparams.resblock , self.hparams.resblock_kernel_sizes ,\
+        #                                self.hparams.resblock_dilation_sizes, self.hparams.upsample_rates,  self.hparams.upsample_initial_channel,  self.hparams.upsample_kernel_sizes , \
+        #                                self.pharams.n_layers_q, self.hparams.use_spectral_norm)
         
-        net_g = self.modules.generator(inputs)
+        # net_g = self.modules.generator(inputs, max_input_length)
+        # logger.debug(type(len_x))
+        # logger.debug(len_x)
+        # logger.debug(type(mel_target))
+        # logger.debug(mel_target)
+        # logger.debug(mel_target[0])
+        # logger.debug(type(mel_target[0]))
+        # logger.debug(effective_batch)
+        # logger.debug(labels)
+        # logger.debug(type(labels))
+        # logger.debug(inputs)
+        # len_x = torch.tensor(len_x)
+        # logger.debug(type(input_x))
+        # logger.debug(input_x)
+        # logger.debug(len(mel_target))
+        # output_lengths=[]
+        # for i in mel_target[0]:
+        #     output_lengths.append(len(i))
+
+        # output_lengths= torch.as_tensor(output_lengths)
+        # output_lengths.to(device=cuda:0)
         
         y_hat, l_length, attn, ids_slice, x_mask, z_mask,\
-        (z, z_p, m_p, logs_p, m_q, logs_q) = net_g(x, x_lengths, spec, spec_lengths)
+        (z, z_p, m_p, logs_p, m_q, logs_q) = self.modules.generator(input_x, input_lengths, mel_target[0], output_lengths)
         # get scores and features from discriminator for real and synthesized waveforms
         scores_fake, feats_fake = self.modules.discriminator(y_g_hat.detach())
         scores_real, feats_real = self.modules.discriminator(y)
@@ -342,7 +362,7 @@ def dataio_prepare(hparams):
             dynamic_items=[audio_pipeline],
             output_keys=["mel_text_pair", "wav", "label"],
         )
-
+    logger.debug(datasets["train"])
     return datasets
 
 

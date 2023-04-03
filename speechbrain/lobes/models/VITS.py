@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
-
+from loguru import logger
 from torch.nn import Conv1d, ConvTranspose1d, AvgPool1d, Conv2d
 from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
 from collections import namedtuple
@@ -556,6 +556,7 @@ class TextEncoder(nn.Module):
     self.proj= nn.Conv1d(hidden_channels, out_channels * 2, 1)
 
   def forward(self, x, x_lengths):
+
     x = self.emb(x) * math.sqrt(self.hidden_channels) # [b, t, h]
     x = torch.transpose(x, 1, -1) # [b, h, t]
     x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
@@ -1363,12 +1364,16 @@ def slice_segments(x, ids_str, segment_size=4):
   for i in range(x.size(0)):
     idx_str = ids_str[i]
     idx_end = idx_str + segment_size
+    logger.debug(idx_str)
+    logger.debug(idx_end)
     ret[i] = x[i, :, idx_str:idx_end]
+    logger.debug(ret[i].size())
   return ret
 
 
 def rand_slice_segments(x, x_lengths=None, segment_size=4):
   b, d, t = x.size()
+  logger.debug(x.size())
   if x_lengths is None:
     x_lengths = t
   ids_str_max = x_lengths - segment_size + 1
@@ -1432,6 +1437,7 @@ def shift_1d(x):
 
 
 def sequence_mask(length, max_length=None):
+  
   if max_length is None:
     max_length = length.max()
   x = torch.arange(max_length, dtype=length.dtype, device=length.device)
